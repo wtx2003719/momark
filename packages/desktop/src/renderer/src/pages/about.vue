@@ -36,7 +36,7 @@
           {{ t('about.installing') }}
         </template>
         <template v-else-if="state === 'error'">
-          {{ t('about.updateFailed') }}
+          {{ failureText || t('about.updateFailed') }}
           <a href="#" @click.prevent="openRelease">{{ t('about.manualDownload') }}</a>
         </template>
       </div>
@@ -86,6 +86,8 @@ type TUpdateState =
 const state = ref<TUpdateState>('idle')
 const info = ref<IUpdateInfo | null>(null)
 const progress = ref({ received: 0, total: 0 })
+/** 失败原因（已本地化）；空串 = 常规失败文案。 */
+const failureText = ref('')
 let stopProgress: (() => void) | null = null
 
 const percent = computed(() =>
@@ -94,13 +96,28 @@ const percent = computed(() =>
     : 0
 )
 
+/**
+ * 把主进程返回的失败原因翻成人能看懂的一类。
+ * GitHub 匿名 API 有 60 次/小时的限流，「请求过于频繁」值得单独提示；
+ * `HTTP 5xx` 是对方服务端的事；其余（含 fetch 抛错）按网络不通处理。
+ */
+const classifyFailure = (raw?: string): string => {
+  if (!raw) return t('about.updateFailed')
+  if (/HTTP 403|HTTP 429/.test(raw)) return t('about.updateRateLimited')
+  if (/HTTP 5\d\d/.test(raw)) return t('about.updateServerError')
+  if (!/^HTTP \d/.test(raw)) return t('about.updateNetworkError')
+  return `${t('about.updateFailed')}（${raw}）`
+}
+
 const checkForUpdate = async (): Promise<void> => {
   state.value = 'checking'
+  failureText.value = ''
 
   try {
     const result = await window.electron.updater.check()
 
     if (result.error || !result.info) {
+      failureText.value = classifyFailure(result.error)
       state.value = 'error'
       return
     }

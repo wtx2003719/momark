@@ -825,7 +825,10 @@
     "preparing": "正在准备…",
     "installing": "正在安装，请在系统弹窗中授权…",
     "updateFailed": "更新失败",
-    "manualDownload": "手动下载"
+    "manualDownload": "手动下载",
+    "updateNetworkError": "网络不通，请检查网络后重试",
+    "updateRateLimited": "请求过于频繁，请稍后再试",
+    "updateServerError": "更新服务暂时不可用"
   },
   "commands": {
     "mt": {

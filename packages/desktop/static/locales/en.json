@@ -823,7 +823,10 @@
     "preparing": "Preparing…",
     "installing": "Installing — please authorize in the system dialog…",
     "updateFailed": "Update failed",
-    "manualDownload": "Download manually"
+    "manualDownload": "Download manually",
+    "updateNetworkError": "Network unavailable — check your connection and retry",
+    "updateRateLimited": "Too many requests — try again later",
+    "updateServerError": "Update service is temporarily unavailable"
   },
   "commands": {
     "mt": {
