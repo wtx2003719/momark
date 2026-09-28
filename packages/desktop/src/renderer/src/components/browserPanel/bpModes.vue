@@ -144,18 +144,28 @@ const select = (next: BpActiveTab) => {
   transition-delay: 0.2s;
 }
 
+/* 三档下强制**严格等宽**（`flex-basis: 0`）：全局的 `flex: 1 0 auto` 按内容
+   定基准，内容多的「标注」（多一枚计数徽标）会被撑宽——实测 76 / 76 / 94，
+   而滑块仍是 33.333% 的固定几何，两者错位，看起来就是"布局失去平衡"。
+   内距与图标/文字间距同时收紧一档，给徽标留出空间。 */
+.bp-modes.three button {
+  flex: 1 1 0;
+  gap: 4px;
+  padding: 5px 6px;
+}
+
 .bp-mode-ann .bp-mode-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
-  border-radius: 8px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
   background: var(--accent);
   color: var(--accent-on);
-  font: 500 10px/1 var(--font-mono);
+  font: 500 9.5px/1 var(--font-mono);
   text-align: center;
   letter-spacing: 0;
 }
