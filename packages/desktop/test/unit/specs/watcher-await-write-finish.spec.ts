@@ -77,4 +77,21 @@ describe('watcher awaitWriteFinish (#3955)', () => {
     expect(isUncPath('C:\\project')).toBe(false)
     expect(isUncPath('/home/me/project')).toBe(false)
   })
+
+  // 同一文件挂两个 chokidar watcher 会在 macOS 上双双失效：文件被 rename
+  // 替换（保存走 write-file-atomic）后两个 fs.watch 句柄一起死，之后该文件
+  // 的外部改动永远收不到（2026-10-08 实测复现）。登记必须幂等。
+  it('watches each (window, path, type) only once', () => {
+    const first = watcher.watch(win as never, '/project/note.md', 'file')
+    const second = watcher.watch(win as never, '/project/note.md', 'file')
+    expect(watchMock).toHaveBeenCalledTimes(1)
+    expect(second).toBe(first)
+  })
+
+  it('still creates separate watchers for different paths and windows', () => {
+    watcher.watch(win as never, '/project/a.md', 'file')
+    watcher.watch(win as never, '/project/b.md', 'file')
+    watcher.watch({ id: 2, webContents: { send: vi.fn() } } as never, '/project/a.md', 'file')
+    expect(watchMock).toHaveBeenCalledTimes(3)
+  })
 })

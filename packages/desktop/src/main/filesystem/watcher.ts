@@ -33,6 +33,27 @@ export const WATCHER_POLL_INTERVAL = 1000
  */
 export const WATCHER_SCAN_FRESH_WINDOW = 10000
 
+/**
+ * 判断「保存后立刻到来的事件」是否真的只是我们自己写盘引起的 mtime 容差。
+ *
+ * 自己的保存在 `window-file-saved` 发出前落盘，文件 mtime 只比事件登记时刻早
+ * 几毫秒；若事件到来时 mtime 被推进到登记时刻之后（哪怕不到 1s），说明盘上又
+ * 被别的程序写过——chokidar 的 awaitWriteFinish 会把这两次写合并成同一条
+ * change 事件，只按时间窗口吞掉就会连外部改动一起丢掉（2026-10-08 实测）。
+ */
+export const SELF_WRITE_MTIME_EPSILON = 50
+
+/** 事件到来时盘上文件是否仍是这次保存写下的那份（mtime 未被后续写入推进）。 */
+const isStillOurWrite = async (pathname: string, start: Date): Promise<boolean> => {
+  try {
+    const stats = await fsPromises.stat(pathname)
+    return stats.mtimeMs - start.getTime() < SELF_WRITE_MTIME_EPSILON
+  } catch {
+    // stat 失败无法判断，按老行为当作自己的写吞掉（文件被删会走 unlink 分支）。
+    return true
+  }
+}
+
 /** 无条件忽略：依赖包目录与 asar 包。提到模块作用域——`ignored` 回调对扫描到
  *  的每个路径都要求值一次，正则字面量写在回调里每次都是新建对象。 */
 const ALWAYS_IGNORED_RE = /(?:^|[/\\])(?:node_modules|(?:.+\.asar))/
@@ -305,6 +326,18 @@ class Watcher {
   }
 
   watch(win: BrowserWindow, watchPath: string, type: WatchType = 'dir'): () => void {
+    // 幂等：同一窗口对同一路径只保留一个 watcher。重复注册会为同一文件挂出
+    // 两个 fs.watch 句柄——文件被 rename 替换（墨记保存走 write-file-atomic）
+    // 后，两个句柄一起失效，该文件的外部改动从此收不到（2026-10-08 实测：
+    // 单 watcher 的所有 rename 场景均稳定，双 watcher 必死）。调用方统一走
+    // `addToOpenedFiles` 登记，这里兜底防漏。
+    for (const id of Object.keys(this.watchers)) {
+      const existing = this.watchers[id]
+      if (existing.win === win && existing.pathname === watchPath && existing.type === type) {
+        return existing.close
+      }
+    }
+
     // P3：macOS 不再强制轮询。chokidar 在 macOS 上默认走 FSEvents；上游那条
     // `isOsx || …` 是历史遗留（本机实测见报告），代价是 chokidar 的 polling
     // 会给每个被监视的文件挂一个 `fs.watchFile`（默认 100ms 一次 stat）：
@@ -559,26 +592,24 @@ class Watcher {
           _ignoreChangeEvents.splice(i, 1)
           --i
 
-          // Modification origin is the editor and we should ignore the event.
+          // Modification origin is the editor and we should ignore the event —
+          // but only while the file is still exactly what we wrote. An external
+          // write landing right after our save is coalesced into this same
+          // event by awaitWriteFinish and must NOT be swallowed with it.
           if (currentTime.getTime() - start.getTime() < duration) {
-            return true
+            return await isStillOurWrite(pathname, start)
           }
 
           // Try to catch cloud drives that emit the change event not
-          // immediately or re-sync the change (GH#3044).
+          // immediately or re-sync the change (GH#3044): still ours → drop.
           if (!usePolling) {
-            try {
-              const fileInfo = await fsPromises.stat(pathname)
-              if (fileInfo.mtime.getTime() - start.getTime() < duration) {
-                if (globalThis.MARKTEXT_DEBUG_VERBOSE >= 3) {
-                  console.log(
-                    `Ignoring file event after "stat": current="${currentTime.toISOString()}", start="${start.toISOString()}", file="${fileInfo.mtime.toISOString()}".`
-                  )
-                }
-                return true
+            if (await isStillOurWrite(pathname, start)) {
+              if (globalThis.MARKTEXT_DEBUG_VERBOSE >= 3) {
+                console.log(
+                  `Ignoring file event after "stat": current="${currentTime.toISOString()}", start="${start.toISOString()}".`
+                )
               }
-            } catch (error) {
-              console.error('Failed to "stat" file to determine modification time:', error)
+              return true
             }
           }
         }
