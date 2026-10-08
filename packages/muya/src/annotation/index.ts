@@ -580,7 +580,18 @@ export class AnnotationModule {
     /** 当前光标所在块（编辑中才有值；失焦为 null → 不做跳过）。 */
     private _caretPathKey(): Nullable<string> {
         const block = this._muya.editor.activeContentBlock;
-        return block ? pathKey(block.path) : null;
+        if (!block)
+            return null;
+        try {
+            return pathKey(block.path);
+        }
+        catch {
+            // 与 highlightsFor 同因：外部重载/切标签的竞态里，块还在但祖先链
+            // 中途断开，`path` getter 抛 `Cannot destructure property 'path' of
+            // 'this.parent'`（2026-10-08 实测：重载后的增量重定位在此崩溃）。
+            // 取不到路径只是没法跳过光标块，按不跳过继续，异常不能抛回渲染循环。
+            return null;
+        }
     }
 
     private _touchesPath(annotation: IAnnotation, key: string): boolean {
