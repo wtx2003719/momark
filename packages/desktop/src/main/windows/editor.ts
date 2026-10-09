@@ -413,9 +413,18 @@ class EditorWindow extends BaseWindow {
 
   /**
    * Add a new path to the file list and watch the given path.
+   *
+   * 幂等：同一条路径只登记/挂载一次 watcher。这条链路有多个触发方（主进程
+   * 打开文件、渲染层 `mt::window-add-file-path`、保存新文件），重复登记会在
+   * macOS 上为同一文件挂出两个 fs.watch 句柄——文件被 rename 替换（保存走
+   * write-file-atomic）后两个句柄一起失效，该文件的外部改动从此检测不到
+   * （2026-10-08 实测复现）。
    */
   addToOpenedFiles(filePath: string): void {
     const { _openedFiles, browserWindow } = this
+    if (_openedFiles!.includes(filePath)) {
+      return
+    }
     _openedFiles!.push(filePath)
     ipcMain.emit('watcher-watch-file', browserWindow, filePath)
   }
@@ -535,15 +544,14 @@ class EditorWindow extends BaseWindow {
     options: Record<string, unknown>,
     selected: boolean
   ): void {
-    const { _accessor, _openedFiles, browserWindow } = this
+    const { _accessor, browserWindow } = this
     const { menu: appMenu } = _accessor
     const { pathname } = rawDocument
 
-    // Listen for file changed.
-    ipcMain.emit('watcher-watch-file', browserWindow, pathname)
+    // 登记并挂 file watcher（幂等，渲染层可能随后再发一次登记）。
+    this.addToOpenedFiles(pathname)
 
     appMenu.addRecentlyUsedDocument(pathname)
-    _openedFiles!.push(pathname)
     browserWindow!.webContents.send('mt::open-new-tab', rawDocument, options, selected)
   }
 
