@@ -2,6 +2,7 @@
   "name": "marktext",
   "version": "1.5.4",
   "description": "MarkText",
+  "license": "AGPL-3.0-only",
   "main": "./out/main/index.js",
   "author": {
     "name": "Jocs",

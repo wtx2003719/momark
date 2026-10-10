@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.5.4-3D5A80" alt="version" />
   <img src="https://img.shields.io/badge/platform-macOS%20arm64%20%7C%20x64-lightgrey" alt="platform" />
-  <img src="https://img.shields.io/badge/license-MIT-7BA3C9" alt="license" />
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-7BA3C9" alt="license" />
   <img src="https://img.shields.io/github/stars/lixiaoshuang79/momark?style=social" alt="stars" />
 </p>
 
@@ -126,6 +126,6 @@ pnpm dev      # 开发实例，渲染进程运行于 localhost:9333
 
 ## License
 
-[MIT](LICENSE)
+项目以 [AGPL-3.0](LICENSE) 授权；源自上游的部分仍为 MIT，见 [NOTICE.md](NOTICE.md)。
 
 > 效果预览中的生物学插图来自 Wikimedia Commons（公有领域 / CC BY-SA 3.0），逐图来源与授权见 [docs/screenshots/figure-sources.txt](docs/screenshots/figure-sources.txt)。

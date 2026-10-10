@@ -7,7 +7,7 @@ export default function (): MenuItemConstructorOptions {
     {
       label: t('menu.help.changelog'),
       click() {
-        shell.openExternal('https://github.com/momark/releases')
+        shell.openExternal('https://github.com/lixiaoshuang79/momark/releases')
       }
     },
     {
@@ -16,19 +16,19 @@ export default function (): MenuItemConstructorOptions {
     {
       label: t('menu.help.askQuestion'),
       click() {
-        shell.openExternal('https://github.com/momark/discussions')
+        shell.openExternal('https://github.com/lixiaoshuang79/momark/discussions')
       }
     },
     {
       label: t('menu.help.reportBug'),
       click() {
-        shell.openExternal('https://github.com/momark/issues')
+        shell.openExternal('https://github.com/lixiaoshuang79/momark/issues')
       }
     },
     {
       label: t('menu.help.viewSource'),
       click() {
-        shell.openExternal('https://github.com/momark')
+        shell.openExternal('https://github.com/lixiaoshuang79/momark')
       }
     },
     {
@@ -37,7 +37,7 @@ export default function (): MenuItemConstructorOptions {
     {
       label: t('menu.help.license'),
       click() {
-        shell.openExternal('https://github.com/momark/blob/develop/LICENSE')
+        shell.openExternal('https://github.com/lixiaoshuang79/momark/blob/main/LICENSE')
       }
     }
   ]
