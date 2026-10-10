@@ -6,6 +6,7 @@ import type { ISelection } from '../selection/types';
 import type { TState } from '../state/types';
 import type { Nullable } from '../types';
 import type Clipboard from './index';
+import { SelectionDirection } from '../selection/types';
 import StateToMarkdown from '../state/stateToMarkdown';
 import { getClipBoardHtml, getSanitizeClipboardHtml } from '../utils/marked';
 import { CopyType } from './types';
@@ -83,7 +84,17 @@ function resolveSelectionOrder(
     if (anchorOutMostBlockOffset == null || focusOutMostBlockOffset == null)
         return null;
 
-    const anchorFirst = anchorOutMostBlockOffset <= focusOutMostBlockOffset;
+    // Outmost-block offsets order the endpoints only when the two blocks
+    // differ. Inside ONE outmost block (a list, a block-quote) both offsets
+    // tie, and a tie treated as anchor-first flips a BACKWARD selection (drag
+    // upward): the start edge comes off the bottom endpoint, both boundary
+    // blocks truncate to empty strings, and copying a list collapses to bare
+    // markers ("1. \n\n2. \n"). The selection's own direction is the
+    // tie-breaker — `cut.ts` orders its edges by it unconditionally.
+    const anchorFirst
+        = anchorOutMostBlockOffset === focusOutMostBlockOffset
+            ? selection.direction !== SelectionDirection.BACKWARD
+            : anchorOutMostBlockOffset <= focusOutMostBlockOffset;
 
     return {
         anchorBlock,
