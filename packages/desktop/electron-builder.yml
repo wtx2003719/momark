@@ -47,6 +47,10 @@ extraResources:
     filter:
       - '**/*'
       - '!locales/**/!(*.min).json'
+  # 随包分发许可文本（AGPL 合规）：进 Resources/
+  - from: ../../LICENSE
+  - from: ../../LICENSE-MIT
+  - from: ../../NOTICE.md
 npmRebuild: false
 electronLanguages: # Avoid packaging all chromium locales since our app has in-built locales
   - en-US
