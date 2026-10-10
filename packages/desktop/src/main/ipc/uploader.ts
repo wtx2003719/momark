@@ -1,4 +1,5 @@
 import path from 'path'
+import crypto from 'crypto'
 import { tmpdir } from 'os'
 import { execFile } from 'child_process'
 import fs from 'fs-extra'
@@ -147,7 +148,15 @@ const writeBinaryToTmp = async (
   // mkdtemp: a private (0700) directory per upload, so two uploads can never
   // collide on a shared Date.now() name.
   const dir = await fs.mkdtemp(path.join(tmpdir(), 'momark-upload-'))
-  const file = path.join(dir, `image${safeSuffix(name)}`)
+  // Name the file by the SHA-1 of its bytes. Uploaders commonly derive the
+  // remote key from the local file name (PicGo's `[path]` transformer uses the
+  // basename); a constant `image.png` made every pasted bitmap overwrite the
+  // same remote object, so all of them resolved to one URL and the editor
+  // (caching per URL) kept showing the first image for every later paste.
+  // Content-hash keeps distinct bitmaps on distinct names, and identical bytes
+  // reuse one name — the same URL then genuinely is the same image.
+  const hash = crypto.createHash('sha1').update(buf).digest('hex')
+  const file = path.join(dir, `${hash}${safeSuffix(name)}`)
   await fs.writeFile(file, buf)
   return { file, dir }
 }

@@ -158,24 +158,65 @@ describe('uploader IPC — settings come from the main store (A-10)', () => {
 })
 
 describe('uploader IPC — temp files (A-10)', () => {
+  const buffered = (data: number[]) => ({
+    pathname: path.join(imageDir, 'doc.md'),
+    image: { data, name: 'pasted.png' },
+    isPath: false,
+    preferences: { currentUploader: 'picgo', cliScript: '' }
+  })
+
   it('gives every buffered upload its own private directory', async () => {
     writeDataCenter({ currentUploader: 'picgo', cliScript: '' })
     const upload = handler()
-    const payload = {
-      pathname: path.join(imageDir, 'doc.md'),
-      image: { data: [1, 2, 3], name: 'pasted.png' },
-      isPath: false,
-      preferences: { currentUploader: 'picgo', cliScript: '' }
-    }
 
-    await Promise.all([upload(TRUSTED_EVENT, payload), upload(TRUSTED_EVENT, payload)])
+    await Promise.all([
+      upload(TRUSTED_EVENT, buffered([1, 2, 3])),
+      upload(TRUSTED_EVENT, buffered([1, 2, 3]))
+    ])
 
     const [first, second] = state.execFile.mock.calls.map((call) => (call[1] as string[])[1])
     expect(first).not.toBe(second)
     for (const file of [first, second]) {
-      expect(file.endsWith('image.png')).toBe(true)
       // The directory is the mkdtemp one, removed again after the upload.
       expect(fs.existsSync(path.dirname(file))).toBe(false)
     }
+  })
+
+  it('names the temp file by a content hash, not a constant image.png', async () => {
+    // Uploaders that reuse the local basename as the remote key (PicGo's
+    // `[path]` transformer) would overwrite one remote object for every
+    // paste if the name were constant — the regression that made all pasted
+    // screenshots resolve to a single URL.
+    writeDataCenter({ currentUploader: 'picgo', cliScript: '' })
+    const upload = handler()
+
+    await Promise.all([
+      upload(TRUSTED_EVENT, buffered([1, 2, 3])),
+      upload(TRUSTED_EVENT, buffered([4, 5, 6]))
+    ])
+
+    const names = state.execFile.mock.calls.map((call) => path.basename((call[1] as string[])[1]))
+    expect(names[0]).not.toBe(names[1])
+    for (const name of names) expect(name).toMatch(/^[0-9a-f]{40}\.png$/)
+  })
+
+  it('reuses one name for identical bytes, keeping the extension', async () => {
+    writeDataCenter({ currentUploader: 'picgo', cliScript: '' })
+    const upload = handler()
+
+    await Promise.all([
+      upload(TRUSTED_EVENT, {
+        ...buffered([7, 7, 7]),
+        image: { data: [7, 7, 7], name: 'shot.jpeg' }
+      }),
+      upload(TRUSTED_EVENT, {
+        ...buffered([7, 7, 7]),
+        image: { data: [7, 7, 7], name: 'another-name.jpeg' }
+      })
+    ])
+
+    const names = state.execFile.mock.calls.map((call) => path.basename((call[1] as string[])[1]))
+    expect(names[0]).toBe(names[1])
+    expect(names[0].endsWith('.jpeg')).toBe(true)
   })
 })
