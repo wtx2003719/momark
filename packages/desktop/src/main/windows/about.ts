@@ -8,7 +8,7 @@ import log from 'electron-log'
 
 /**
  * MoMark about window (PHASE2-SPEC §9): 420×480pt, frozen icon-1 (92px, 21px
- * corner radius), name, version and MIT license line.
+ * corner radius), name, version and AGPL-3.0 license line.
  */
 class AboutWindow extends BaseWindow {
   /**

@@ -46,9 +46,13 @@
       <div class="links">
         <a href="#" @click.prevent="openExternal('https://momark.app')">官网 momark.app</a>
         ·
-        <a href="#" @click.prevent="openExternal('https://github.com/momark')">GitHub 仓库</a>
+        <a href="#" @click.prevent="openExternal('https://github.com/lixiaoshuang79/momark')"
+          >GitHub 仓库</a
+        >
         ·
-        <a href="#" @click.prevent="openExternal('https://github.com/momark/issues')">问题反馈</a>
+        <a href="#" @click.prevent="openExternal('https://github.com/lixiaoshuang79/momark/issues')"
+          >问题反馈</a
+        >
       </div>
 
       <div class="thanks">
