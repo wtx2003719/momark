@@ -400,9 +400,8 @@ const handleMenuClick = () => {
 }
 
 const rename = () => {
-  if (props.platform === 'darwin') {
-    editorStore.RESPONSE_FOR_RENAME()
-  }
+  // Windows 适配：原 gate 限定 darwin，实际底层（保存对话框 / fs.rename）跨平台。
+  editorStore.RESPONSE_FOR_RENAME()
 }
 
 // round13（用户拍板）：双击标题就地重命名。
@@ -419,7 +418,7 @@ const baseNameWithoutExt = (name: string): string => {
 }
 
 const startRename = () => {
-  if (props.platform !== 'darwin') return
+  // Windows 适配：移除 darwin 限定（round13 的就地重命名在 Windows 同样可用）。
   if (!props.pathname) {
     rename()
     return
@@ -468,7 +467,8 @@ const revealRightDocInFinder = () => {
 // round11（用户反馈）：双击右侧文档名同样发出重命名（竖线两侧都有效）。
 // 复用 RENAME_FILE（= 标签栏右键重命名口径：激活该文档后弹重命名框）。
 const renameRightDoc = () => {
-  if (props.platform !== 'darwin' || !splitStore.active) return
+  // Windows 适配：移除 darwin 限定，保留分屏激活检查。
+  if (!splitStore.active) return
   const tab = editorStore.tabs.find((item) => item.id === splitStore.tabId)
   if (tab) {
     editorStore.RENAME_FILE(tab)
