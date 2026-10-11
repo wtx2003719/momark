@@ -719,7 +719,10 @@ onBeforeUnmount(() => {
 
 /* round10 顶栏右上角：保存状态 + 字数按钮（原底部状态栏上移）。
    macOS 下 right-toolbar 不渲染，统计独占右上角；与居中标题同排不重叠
-   （.title 的 padding-right 已避让）。 */
+   （.title 的 padding-right 已避让）。
+   Windows 适配：right-toolbar 渲染时（自定义标题栏 + 非 macOS），需要
+   给 title-stats 让出右 toolbar（138px）+ 间隙，避免与窗口调节按钮
+   重叠遮住 − / ⊞ / ✕ 中的 − 和 ✕。 */
 .title-stats {
   position: absolute;
   top: 0;
@@ -732,6 +735,12 @@ onBeforeUnmount(() => {
   line-height: 1.45;
   color: var(--muted);
   z-index: 3;
+}
+/* 同级有 .right-toolbar 时（即 Windows + 自定义标题栏），把 title-stats
+   向左移 150px（138 toolbar + 12 间隙）。:has 在 Electron 42 内置
+   Chromium 148 已原生支持。 */
+.title-bar:has(> .right-toolbar) .title-stats {
+  right: 150px;
 }
 .title-stats .save-state {
   display: flex;
@@ -784,6 +793,20 @@ onBeforeUnmount(() => {
 }
 .frameless-titlebar-menu {
   color: var(--muted);
+  /* Windows 适配：原为裸图标 + auto 尺寸，命中区只有 ~14px²，
+     frameless 窗口上偶尔被 OS drag 拦截吞掉点击。给一个固定的
+     28×40 点击区并与图标对齐，cursor 也改成 pointer。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 40px;
+  font-size: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+.frameless-titlebar-menu:hover {
+  color: var(--ink);
 }
 .frameless-titlebar-close:hover {
   background-color: rgb(228, 79, 79);
