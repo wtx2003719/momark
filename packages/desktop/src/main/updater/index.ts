@@ -1,17 +1,19 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import { app, net } from 'electron'
 import log from 'electron-log'
 import type { IUpdateCheckResult, IUpdateInfo } from '@shared/types/ipc'
+import { isWindows } from '../config'
 
 /**
  * 应用自动更新（feat/updater）。
  *
- * 数据源是发布仓的 GitHub Release（`momark/<x.y.z>` tag，附件里带
- * `momark-mac-arm64-<ver>.zip`）。三步：查最新版 → 下载 zip（带进度）→
- * 提权替换 /Applications 里的 app 并重启。
+ * 数据源是发布仓的 GitHub Release（`momark/<x.y.z>` tag），附件命名约定：
+ *   - macOS arm64：`momark-mac-arm64-<ver>.zip`（dmg 不进自动安装链路）
+ *   - Windows x64：`momark-win-x64-<ver>-setup.exe`（NSIS 自解压安装器）
+ * 三步：查最新版 → 下载（带进度）→ 按平台解压/直接用 → 静默安装并重启。
  *
  * 为什么不用 electron-updater：macOS 上它的自动安装（Squirrel.Mac）**要求
  * 应用经过代码签名**，墨记当前未签名/未公证，走它只会在安装环节失败。
@@ -51,6 +53,42 @@ const isNewer = (a: string, b: string): boolean => {
   return false
 }
 
+/**
+ * 在 release 资产列表里挑出当前平台能用的那一份。
+ *
+ * Windows 拿 NSIS 安装器（momark-win-x64-<ver>-setup.exe），macOS 拿 zip。
+ * 命名约定见 electron-builder.yml 的 artifactName。返回 null = 没有可用
+ * 附件（常见原因：另一个平台的 PR 还没发，或用上游 tag 但只打了一种资产）。
+ */
+const pickAsset = (
+  assets: Array<{ name?: string; browser_download_url?: string; size?: number }>
+): { name: string; url: string; size: number | null } | null => {
+  for (const a of assets) {
+    if (typeof a.name !== 'string' || typeof a.browser_download_url !== 'string') continue
+    if (isWindows) {
+      // artifactName: momark-win-${arch}-${version}-setup.${ext}
+      if (a.name.startsWith('momark-win-') && a.name.endsWith('-setup.exe')) {
+        return {
+          name: a.name,
+          url: a.browser_download_url,
+          size: typeof a.size === 'number' ? a.size : null
+        }
+      }
+    } else {
+      // artifactName: momark-mac-${arch}-${version}.${ext}（取 arm64：dmg 不能
+      // 进程内解压，zip 才能自动安装）
+      if (a.name.endsWith('.zip') && a.name.includes('arm64')) {
+        return {
+          name: a.name,
+          url: a.browser_download_url,
+          size: typeof a.size === 'number' ? a.size : null
+        }
+      }
+    }
+  }
+  return null
+}
+
 /** 查 GitHub 上的最新 release 并和当前版本比对。任何失败都归到 `error`，不抛。 */
 export const checkForUpdates = async (): Promise<IUpdateCheckResult> => {
   const current = app.getVersion()
@@ -80,19 +118,26 @@ export const checkForUpdates = async (): Promise<IUpdateCheckResult> => {
       return { hasUpdate: false, current, info: null, error: 'release 缺少可识别的 tag' }
     }
 
-    // 只认 macOS arm64 的 zip：dmg 无法在本进程内解压，zip 才能自动安装。
-    const asset = (data.assets ?? []).find(
-      (a) => typeof a.name === 'string' && a.name.endsWith('.zip') && a.name.includes('arm64')
-    )
+    const asset = pickAsset(data.assets ?? [])
+    const platformLabel = isWindows ? 'Windows' : 'macOS'
 
     const info: IUpdateInfo = {
       version,
       tagName,
       notes: String(data.body ?? ''),
       publishedAt: String(data.published_at ?? ''),
-      assetUrl: asset?.browser_download_url ?? null,
+      assetUrl: asset?.url ?? null,
       assetName: asset?.name ?? null,
-      assetSize: typeof asset?.size === 'number' ? asset.size : null
+      assetSize: asset?.size ?? null
+    }
+
+    if (!asset) {
+      return {
+        hasUpdate: false,
+        current,
+        info: null,
+        error: `release 缺少 ${platformLabel} 的可识别附件`
+      }
     }
 
     return { hasUpdate: isNewer(version, current), current, info }
@@ -108,12 +153,18 @@ export const checkForUpdates = async (): Promise<IUpdateCheckResult> => {
  *
  * 用 `net.fetch` 而不是 Node 的 https：它走 Electron 的网络栈（系统代理、
  * 证书策略与页面一致），大文件在弱网下也按块回调进度。
+ *
+ * 文件名直接来自 release 资产名：Windows 下是 .exe 安装器，macOS 下是 zip。
  */
 export const downloadUpdate = async (
   info: IUpdateInfo,
   onProgress: (progress: IDownloadProgress) => void
 ): Promise<string> => {
-  if (!info.assetUrl || !info.assetName) throw new Error('该 release 没有 mac arm64 的 zip 附件')
+  if (!info.assetUrl || !info.assetName) {
+    throw new Error(
+      isWindows ? '该 release 没有 Windows 安装器附件' : '该 release 没有 mac arm64 的 zip 附件'
+    )
+  }
 
   const dir = path.join(app.getPath('userData'), 'updates')
   await fs.promises.mkdir(dir, { recursive: true })
@@ -144,16 +195,25 @@ export const downloadUpdate = async (
 }
 
 /**
- * 解压 zip 到临时目录，返回解压出的 `.app` 路径。
+ * 把更新包解开成「可直接用于安装的本地产物」的路径。
  *
- * 用 `ditto -x -k` 而不是 unzip：ditto 保留 bundle 里的符号链接与扩展属性
- * （Electron 的 Framework 里有 symlink，unzip 会解开成副本，撑爆体积且可能
- * 破坏签名结构）。
+ * - macOS：解压 zip 到临时目录，返回 `.app` 路径，供 osascript 复制到
+ *   `/Applications`。
+ * - Windows：NSIS 安装器是自解压的，直接返回 .exe 路径即可——这一步在
+ *   Windows 上没有真实工作可做。
  */
-export const extractUpdate = async (zipPath: string): Promise<string> => {
+export const extractUpdate = async (downloadedPath: string): Promise<string> => {
+  if (isWindows) {
+    // NSIS 自解压：没有独立解压阶段。下一步 installUpdate 直接 spawn 它。
+    return downloadedPath
+  }
+
+  // macOS：用 `ditto -x -k` 而不是 unzip：ditto 保留 bundle 里的符号链接与
+  // 扩展属性（Electron 的 Framework 里有 symlink，unzip 会解开成副本，撑爆
+  // 体积且可能破坏签名结构）。
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'momark-update-'))
   await new Promise<void>((resolve, reject) => {
-    exec(`ditto -x -k ${JSON.stringify(zipPath)} ${JSON.stringify(dir)}`, (error) => {
+    exec(`ditto -x -k ${JSON.stringify(downloadedPath)} ${JSON.stringify(dir)}`, (error) => {
       if (error) reject(new Error(`解压失败：${error.message}`))
       else resolve()
     })
@@ -168,17 +228,22 @@ export const extractUpdate = async (zipPath: string): Promise<string> => {
 }
 
 /**
- * 提权安装：用 `osascript ... with administrator privileges` 跑一段 shell，
- * 等墨记退出 → 替换目标 app → `xattr -cr` → 重启。
+ * 安装已就绪的更新产物并准备重启。
  *
- * 为什么要等退出：替换正在运行的 bundle，macOS 允许 unlink，但进程仍在用旧
- * 文件，重启前新旧混杂；等进程真正退出再换最干净。脚本里 `open` 负责用户
- * 看到的那一步「更新完自动打开」。
- *
- * 提权是必需的：`/Applications` 属主是 root，普通用户不能直接替换。这也是
- * 用户拍板「全自动替换」时接受的唯一打扰（每次更新弹一次系统密码框）。
+ * - macOS：提权跑一段 shell，等墨记退出 → 替换目标 app → `xattr -cr` →
+ *   `open` 新版。
+ * - Windows：直接 spawn NSIS 安装器（`/S` 静默），它会自动替换运行中的
+ *   `momark.exe`（在我们 app.quit 之后）并完成文件/快捷方式更新。
+ *   用户级安装（`perMachine: false`）无需 UAC。
  */
-export const installUpdate = async (extractedAppPath: string): Promise<void> => {
+export const installUpdate = async (installerPath: string): Promise<void> => {
+  if (isWindows) {
+    return installWindows(installerPath)
+  }
+  return installMacos(installerPath)
+}
+
+const installMacos = async (extractedAppPath: string): Promise<void> => {
   // 当前运行的 app bundle（…/墨记.app）；开发态（electron-vite dev）没有这个
   // 层级，installUpdate 只对打包产物有意义。
   const appBundle = app.getPath('exe').replace(/\/Contents\/MacOS\/[^/]+$/, '')
@@ -206,4 +271,26 @@ export const installUpdate = async (extractedAppPath: string): Promise<void> => 
       }
     )
   })
+}
+
+const installWindows = async (installerPath: string): Promise<void> => {
+  log.info('[updater] launching NSIS installer (silent)', installerPath)
+
+  // 直接 spawn .exe 并 `/S` 静默；detached 让安装器进程独立于当前 Electron
+  // 进程，unref() 阻止 Node 事件循环因它挂起。安装器需要把 momark.exe 替换
+  // 成新版本，所以必须在我们 app.quit() 释放文件锁之后才动——安装器会
+  // 自己重试或等待，本进程先退出就够。
+  const child = spawn(installerPath, ['/S'], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true
+  })
+  child.on('error', (err) => {
+    log.error('[updater] failed to spawn installer:', err)
+  })
+  child.unref()
+
+  // 给安装器 ~1s 时间启动并把自己的临时文件准备好，再退出本进程释放文件锁。
+  // 安装器后续会接管替换 momark.exe 的工作。
+  await new Promise<void>((resolve) => setTimeout(resolve, 1000))
 }
