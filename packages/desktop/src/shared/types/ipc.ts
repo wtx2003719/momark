@@ -539,7 +539,8 @@ export interface IUpdateInfo {
   /** Release 正文（Markdown）。 */
   notes: string
   publishedAt: string
-  /** mac arm64 的 zip 直链；release 里没有该附件时为 null。 */
+  /** 当前平台对应资产的直链（Windows NSIS 安装器或 macOS zip）。
+   *  release 里没有该平台附件时为 null。 */
   assetUrl: string | null
   assetName: string | null
   assetSize: number | null
