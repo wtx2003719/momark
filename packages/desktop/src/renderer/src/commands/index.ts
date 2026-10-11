@@ -1,6 +1,6 @@
 // List of all static commands that are loaded into command center.
 import bus from '../bus'
-import { delay, isOsx } from '@/util'
+import { delay, isOsx, isWindows } from '@/util'
 import getCommandDescriptionById from './descriptions'
 import { t } from '../i18n'
 
@@ -680,7 +680,8 @@ const commands: CommandDescriptor[] = [
   }
 ]
 
-if (isOsx) {
+// Windows 适配：edit.screenshot 在 Windows 上也可用（走 ms-screenclip:）。
+if (isOsx || isWindows) {
   commands.push({
     id: 'edit.screenshot',
     execute: async () => {
