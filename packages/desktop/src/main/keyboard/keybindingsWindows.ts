@@ -45,7 +45,8 @@ const keybindings: Map<string, string> = new Map([
   ['edit.find-previous', 'Shift+F3'],
   ['edit.replace', 'Ctrl+R'],
   ['edit.find-in-folder', 'Ctrl+Shift+F'],
-  ['edit.screenshot', ''], // macOS only
+  // Windows 适配：默认 Ctrl+Shift+S 唤起系统截图（方案 B1 走 ms-screenclip:）。
+  ['edit.screenshot', 'CommandOrControl+Shift+S'],
 
   // Paragraph menu
   // NOTE: We cannot set a default value for heading size because `Ctrl+Alt` is an alias

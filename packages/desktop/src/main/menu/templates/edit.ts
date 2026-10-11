@@ -1,11 +1,11 @@
 import { type BrowserWindow, type MenuItemConstructorOptions } from 'electron'
 import * as actions from '../actions/edit'
-import { isOsx } from '../../config'
+import { isOsx, isWindows } from '../../config'
 import { COMMANDS } from '../../commands'
 import { t } from '../../i18n'
 import type Keybindings from '../../keyboard/shortcutHandler'
 
-export default function(keybindings: Keybindings): MenuItemConstructorOptions {
+export default function (keybindings: Keybindings): MenuItemConstructorOptions {
   return {
     label: t('menu.edit.edit'),
     submenu: [
@@ -152,17 +152,17 @@ export default function(keybindings: Keybindings): MenuItemConstructorOptions {
       {
         label: t('menu.edit.screenshot'),
         id: 'screenshot',
-        visible: isOsx,
+        // Windows 适配：截图在 Windows 上也可用（走 ms-screenclip:）。
+        visible: isOsx || isWindows,
         accelerator: keybindings.getAccelerator(COMMANDS.EDIT_SCREENSHOT) ?? undefined,
         click(_menuItem, browserWindow) {
           actions.screenshot(browserWindow as BrowserWindow | undefined)
         }
       },
       {
-        // Screenshot is macOS-only; hide its trailing separator too so
-        // Windows/Linux don't show a doubled divider here (#2997).
+        // Screenshot 后面的分隔符：macOS/Windows 显示，Linux 隐藏（避免重复 #2997）。
         type: 'separator',
-        visible: isOsx
+        visible: isOsx || isWindows
       },
       {
         // TODO: Remove this menu entry and add it to the command palette (#1408).

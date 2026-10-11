@@ -922,12 +922,50 @@ class App {
           }
           win.webContents.send('mt::screenshot-captured', savedPath)
         })
+      } else if (isWindows) {
+        // Windows 适配（方案 B1）：唤起系统 Win+Shift+S（ms-screenclip:），
+        // Snipping Tool 完成后把截图放进剪贴板。我们轮询剪贴板直到出现一张
+        // 与调用前不同的图，或超时。匹配 macOS 的「交互式框选 → 写入文件」
+        // 体验。
+        const screenshotFileName = await this.getScreenshotFileName()
+        const beforeImage = clipboard.readImage()
+        const beforeBuf = beforeImage.isEmpty() ? null : beforeImage.toPNG()
+
+        // `start` 是 cmd 内置，空标题防参数被当成窗口标题。
+        // 用后台 exec 即可——不等结束，截图工具是 GUI。
+        exec('start "" "ms-screenclip:"', (err) => {
+          if (err) log.error('Failed to launch ms-screenclip:', err)
+        })
+
+        const TIMEOUT_MS = 60_000
+        const POLL_MS = 250
+        const startedAt = Date.now()
+        let captured: Electron.NativeImage | null = null
+        while (Date.now() - startedAt < TIMEOUT_MS) {
+          await new Promise<void>((resolve) => setTimeout(resolve, POLL_MS))
+          const cur = clipboard.readImage()
+          if (cur.isEmpty()) continue
+          const curBuf = cur.toPNG()
+          // 与调用前不同 → 用户用 Snipping Tool 截了一张新图。
+          // 相同（或调用前已有图未变）→ 用户取消 / Esc，忽略。
+          if (!beforeBuf || !curBuf.equals(beforeBuf)) {
+            captured = cur
+            break
+          }
+        }
+
+        let savedPath = ''
+        if (captured) {
+          try {
+            await fsPromises.writeFile(screenshotFileName, captured.toPNG())
+            savedPath = screenshotFileName
+          } catch (writeErr) {
+            log.error(writeErr)
+          }
+        }
+        win.webContents.send('mt::screenshot-captured', savedPath)
       } else {
-        // TODO: Do nothing, maybe we'll add screenCapture later on Linux and Windows.
-        // if (this.shortcutCapture) {
-        //   this.launchScreenshotWin = win
-        //   this.shortcutCapture.shortcutCapture()
-        // }
+        // TODO: Do nothing, maybe we'll add screenCapture later on Linux.
       }
     })
 
